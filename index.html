@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jupyter Notebook Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Markdown to HTML 변환을 위한 marked.js -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- ZIP 파일 생성을 위한 JSZip.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4f46e5;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+     <link rel="preconnect" href="https://fonts.googleapis.com">
+     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-900 text-white flex items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-2xl p-8 space-y-6 bg-gray-800 rounded-xl shadow-2xl relative">
+        <!-- 언어 선택 버튼 -->
+        <div id="language-switcher" class="absolute top-4 right-4 flex space-x-2">
+            <button data-lang="ko" class="lang-btn px-3 py-1 text-sm rounded-md transition-colors">한국어</button>
+            <button data-lang="en" class="lang-btn px-3 py-1 text-sm rounded-md transition-colors">English</button>
+        </div>
+
+        <div class="text-center pt-8">
+            <h1 class="text-3xl font-bold text-indigo-400" data-lang-key="title">Jupyter Notebook Converter</h1>
+            <p class="mt-2 text-gray-400" data-lang-key="subtitle">.ipynb 파일을 HTML 또는 Markdown으로 변환하세요.</p>
+        </div>
+
+        <!-- 파일 업로드 영역 -->
+        <div class="flex flex-col items-center justify-center w-full">
+            <label for="notebook-file" class="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-lg cursor-pointer bg-gray-700 border-gray-600 hover:border-gray-500 hover:bg-gray-600 transition-colors">
+                <div class="flex flex-col items-center justify-center pt-5 pb-6">
+                    <svg class="w-10 h-10 mb-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"></path></svg>
+                    <p class="mb-2 text-sm text-gray-400">
+                        <span class="font-semibold" data-lang-key="uploadClick">클릭하여 파일을 선택</span><span data-lang-key="uploadDrag">하거나 드래그 앤 드롭하세요</span>
+                    </p>
+                    <p class="text-xs text-gray-500" data-lang-key="uploadHint">(.ipynb 파일만 가능)</p>
+                </div>
+                <input id="notebook-file" type="file" class="hidden" accept=".ipynb">
+            </label>
+            <p id="file-name" class="mt-2 text-sm text-gray-300 h-5"></p>
+        </div>
+
+        <!-- 변환 옵션 -->
+        <div class="space-y-4">
+            <!-- HTML 변환 -->
+            <button id="convert-html-btn" class="w-full flex justify-center items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-teal-500 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                <span data-lang-key="convertHtml">HTML로 변환하기</span>
+            </button>
+            
+            <!-- Markdown 변환 -->
+            <div class="p-4 border border-gray-600 rounded-lg space-y-3">
+                <h3 class="font-semibold text-lg text-gray-300" data-lang-key="mdOptionsTitle">마크다운 변환 옵션</h3>
+                <div class="flex flex-col space-y-2">
+                    <label class="flex items-center space-x-3">
+                        <input type="radio" name="md-option" value="base64" class="form-radio h-4 w-4 text-indigo-600 bg-gray-700 border-gray-500 focus:ring-indigo-500" checked>
+                        <span class="text-gray-400" data-lang-key="mdOptionBase64">Base64 이미지 포함 (.md)</span>
+                    </label>
+                    <label class="flex items-center space-x-3">
+                        <input type="radio" name="md-option" value="zip" class="form-radio h-4 w-4 text-indigo-600 bg-gray-700 border-gray-500 focus:ring-indigo-500">
+                        <span class="text-gray-400" data-lang-key="mdOptionZip">이미지 파일 분리 (.zip) - GitHub/GitLab용</span>
+                    </label>
+                </div>
+                <button id="convert-md-btn" class="w-full flex justify-center items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 focus:outline-none focus:ring-4 focus:ring-indigo-500 focus:ring-opacity-50 disabled:opacity-50 disabled:cursor-not-allowed">
+                    <span data-lang-key="convertMd">MD로 변환 및 다운로드</span>
+                </button>
+            </div>
+        </div>
+        
+        <!-- 상태 메시지 및 다운로드 영역 -->
+        <div id="status-container" class="text-center h-16 pt-2">
+            <div id="loader" class="loader mx-auto hidden"></div>
+            <p id="status" class="text-green-400"></p>
+            <a id="download-link" class="hidden mt-2 inline-block w-full max-w-xs text-center bg-gray-600 hover:bg-gray-500 text-white font-bold py-2 px-4 rounded-lg transition-all duration-300" data-lang-key="download">
+                다운로드
+            </a>
+        </div>
+    </div>
+
+    <script>
+        const translations = {
+            en: {
+                title: "Jupyter Notebook Converter",
+                subtitle: "Convert .ipynb files to HTML or Markdown.",
+                uploadClick: "Click to upload",
+                uploadDrag: " or drag and drop",
+                uploadHint: "(.ipynb files only)",
+                selectedFile: "Selected file: ",
+                convertHtml: "Convert to HTML",
+                mdOptionsTitle: "Markdown Conversion Options",
+                mdOptionBase64: "Embed Base64 Images (.md)",
+                mdOptionZip: "Separate Image Files (.zip) - For GitHub/GitLab",
+                convertMd: "Convert & Download MD",
+                download: "Download",
+                converting: "Converting...",
+                errorRead: "Error reading file.",
+                errorOnlyIpynb: "Only '.ipynb' files can be uploaded.",
+                errorSelectFile: "Please select a valid .ipynb file first.",
+                successHtml: "HTML conversion complete!",
+                errorHtml: "Error during HTML conversion.",
+                successMdBase64: "Markdown (Base64) conversion complete!",
+                successMdZip: "Markdown (ZIP) conversion complete!",
+                errorMd: "Error during Markdown conversion.",
+            },
+            ko: {
+                title: "Jupyter Notebook Converter",
+                subtitle: ".ipynb 파일을 HTML 또는 Markdown으로 변환하세요.",
+                uploadClick: "클릭하여 파일을 선택",
+                uploadDrag: "하거나 드래그 앤 드롭하세요",
+                uploadHint: "(.ipynb 파일만 가능)",
+                selectedFile: "선택된 파일: ",
+                convertHtml: "HTML로 변환하기",
+                mdOptionsTitle: "마크다운 변환 옵션",
+                mdOptionBase64: "Base64 이미지 포함 (.md)",
+                mdOptionZip: "이미지 파일 분리 (.zip) - GitHub/GitLab용",
+                convertMd: "MD로 변환 및 다운로드",
+                download: "다운로드",
+                converting: "변환 중...",
+                errorRead: "파일을 읽는 중 오류가 발생했습니다.",
+                errorOnlyIpynb: "'.ipynb' 파일만 업로드할 수 있습니다.",
+                errorSelectFile: "먼저 유효한 .ipynb 파일을 선택해주세요.",
+                successHtml: "HTML 변환이 완료되었습니다!",
+                errorHtml: "HTML 변환 중 오류가 발생했습니다.",
+                successMdBase64: "Markdown (Base64) 변환이 완료되었습니다!",
+                successMdZip: "Markdown (ZIP) 변환이 완료되었습니다!",
+                errorMd: "Markdown 변환 중 오류가 발생했습니다.",
+            }
+        };
+
+        let currentLanguage = 'ko';
+        const fileInput = document.getElementById('notebook-file');
+        const fileNameDisplay = document.getElementById('file-name');
+
+        const setLanguage = (lang) => {
+            currentLanguage = lang;
+            document.documentElement.lang = lang;
+            document.querySelectorAll('[data-lang-key]').forEach(el => {
+                const key = el.dataset.langKey;
+                if (translations[lang][key]) {
+                    el.textContent = translations[lang][key];
+                }
+            });
+
+            // 버튼 스타일 업데이트
+            document.querySelectorAll('.lang-btn').forEach(btn => {
+                if (btn.dataset.lang === lang) {
+                    btn.classList.add('bg-indigo-600', 'text-white');
+                    btn.classList.remove('bg-gray-600', 'text-gray-300');
+                } else {
+                    btn.classList.add('bg-gray-600', 'text-gray-300');
+                    btn.classList.remove('bg-indigo-600', 'text-white');
+                }
+            });
+            
+            // 파일 이름이 표시된 경우, 언어에 맞게 업데이트
+            if (selectedFile) {
+                fileNameDisplay.textContent = `${translations[currentLanguage].selectedFile}${selectedFile.name}`;
+            }
+        };
+
+        const langSwitcher = document.getElementById('language-switcher');
+        langSwitcher.addEventListener('click', (e) => {
+            if (e.target.matches('.lang-btn')) {
+                const lang = e.target.dataset.lang;
+                if (lang !== currentLanguage) {
+                    setLanguage(lang);
+                }
+            }
+        });
+        
+        // --- 기존 로직 ---
+        const convertHtmlBtn = document.getElementById('convert-html-btn');
+        const convertMdBtn = document.getElementById('convert-md-btn');
+        const statusContainer = document.getElementById('status-container');
+        const loader = document.getElementById('loader');
+        const statusDisplay = document.getElementById('status');
+        const downloadLink = document.getElementById('download-link');
+
+        let selectedFile = null;
+        let notebookContent = null;
+
+        fileInput.addEventListener('change', (event) => {
+            selectedFile = event.target.files[0];
+            resetUI();
+            if (selectedFile) {
+                if (selectedFile.name.endsWith('.ipynb')) {
+                    fileNameDisplay.textContent = `${translations[currentLanguage].selectedFile}${selectedFile.name}`;
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try { notebookContent = JSON.parse(e.target.result); } catch (err) {
+                            showError('errorRead');
+                            notebookContent = null;
+                        }
+                    };
+                    reader.readAsText(selectedFile);
+                } else {
+                    showError('errorOnlyIpynb');
+                    selectedFile = null;
+                }
+            }
+        });
+        
+        function resetUI() {
+            fileNameDisplay.textContent = '';
+            statusDisplay.textContent = '';
+            downloadLink.classList.add('hidden');
+            loader.classList.add('hidden');
+            notebookContent = null;
+        }
+
+        function showError(messageKey) {
+            statusDisplay.textContent = translations[currentLanguage][messageKey];
+            statusDisplay.classList.remove('text-green-400');
+            statusDisplay.classList.add('text-red-400');
+        }
+        
+        function showSuccess(messageKey) {
+            statusDisplay.textContent = translations[currentLanguage][messageKey];
+            statusDisplay.classList.remove('text-red-400');
+            statusDisplay.classList.add('text-green-400');
+        }
+
+        function startLoading() {
+            convertHtmlBtn.disabled = true;
+            convertMdBtn.disabled = true;
+            loader.classList.remove('hidden');
+            statusDisplay.textContent = translations[currentLanguage].converting;
+            downloadLink.classList.add('hidden');
+        }
+
+        function stopLoading() {
+            convertHtmlBtn.disabled = false;
+            convertMdBtn.disabled = false;
+            loader.classList.add('hidden');
+        }
+
+        function checkFile() {
+            if (!selectedFile || !notebookContent) {
+                showError('errorSelectFile');
+                return false;
+            }
+            return true;
+        }
+
+        convertHtmlBtn.addEventListener('click', () => {
+            if (!checkFile()) return;
+            startLoading();
+            setTimeout(() => {
+                try {
+                    const htmlResult = convertToHtml(notebookContent);
+                    createDownloadLink(new Blob([htmlResult], { type: 'text/html' }), selectedFile.name.replace('.ipynb', '.html'));
+                    showSuccess('successHtml');
+                } catch(e) {
+                    showError('errorHtml');
+                    console.error(e);
+                } finally { stopLoading(); }
+            }, 10);
+        });
+
+        convertMdBtn.addEventListener('click', async () => {
+            if (!checkFile()) return;
+            startLoading();
+            const option = document.querySelector('input[name="md-option"]:checked').value;
+            await new Promise(resolve => setTimeout(resolve, 10));
+            try {
+                const { markdownContent, images } = convertToMarkdown(notebookContent, option);
+                if (option === 'base64') {
+                    createDownloadLink(new Blob([markdownContent], { type: 'text/markdown' }), selectedFile.name.replace('.ipynb', '.md'));
+                    showSuccess('successMdBase64');
+                } else if (option === 'zip') {
+                    const zipBlob = await createZipFile(markdownContent, images);
+                    createDownloadLink(zipBlob, selectedFile.name.replace('.ipynb', '.zip'));
+                    showSuccess('successMdZip');
+                }
+            } catch(e) {
+                showError('errorMd');
+                console.error(e);
+            } finally { stopLoading(); }
+        });
+
+        function convertToHtml(notebook) {
+            let bodyContent = '';
+            notebook.cells.forEach(cell => {
+                const source = Array.isArray(cell.source) ? cell.source.join('') : cell.source;
+                if (cell.cell_type === 'markdown') { bodyContent += `<div class="cell markdown-cell">${marked.parse(source)}</div>`;
+                } else if (cell.cell_type === 'code') {
+                    bodyContent += `<div class="cell code-cell"><pre class="code-input"><code>${source.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</code></pre>`;
+                    if (cell.outputs && cell.outputs.length > 0) {
+                        bodyContent += '<div class="output-wrapper">';
+                        cell.outputs.forEach(output => {
+                             if (output.output_type === 'stream' && output.text) { const text = Array.isArray(output.text) ? output.text.join('') : output.text; bodyContent += `<pre class="output-text">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`;
+                            } else if ((output.output_type === 'execute_result' || output.output_type === 'display_data') && output.data) {
+                                if (output.data['image/png']) bodyContent += `<img src="data:image/png;base64,${output.data['image/png']}" alt="Output Image">`;
+                                else if (output.data['image/jpeg']) bodyContent += `<img src="data:image/jpeg;base64,${output.data['image/jpeg']}" alt="Output Image">`;
+                                else if (output.data['text/plain']) { const text = Array.isArray(output.data['text/plain']) ? output.data['text/plain'].join('') : output.data['text/plain']; bodyContent += `<pre class="output-text">${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>`; }
+                            }
+                        });
+                        bodyContent += '</div>';
+                    }
+                    bodyContent += `</div>`;
+                }
+            });
+            return `<!DOCTYPE html><html lang="${currentLanguage}"><head><meta charset="UTF-8"><title>${selectedFile.name.replace('.ipynb', '')}</title><style>body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;line-height:1.6;color:#e6edf3;background-color:#0d1117;padding:20px;}.container{max-width:800px;margin:0 auto;}.cell{border:1px solid #30363d;border-radius:6px;margin-bottom:20px;overflow:hidden;}.markdown-cell{padding:16px;background-color:#161b22;}h1,h2,h3,h4,h5,h6{border-bottom:1px solid #30363d;padding-bottom:0.3em;}.code-cell{background-color:#161b22;}.code-input{background-color:#0d1117;color:#c9d1d9;padding:16px;margin:0;white-space:pre-wrap;word-wrap:break-word;border-bottom:1px solid #30363d;}.output-wrapper{padding:16px;background-color:#161b22;}.output-text{color:#c9d1d9;white-space:pre-wrap;word-wrap:break-word;margin:0;}img{max-width:100%;height:auto;display:block;margin-top:10px;}code{background-color:rgba(110,118,129,0.4);border-radius:6px;padding:0.2em 0.4em;}pre>code{background-color:transparent;padding:0;}</style></head><body><div class="container"><h1>${selectedFile.name}</h1>${bodyContent}</div></body></html>`;
+        }
+
+        function convertToMarkdown(notebook, imageOption = 'base64') {
+            let markdownOutput = '';
+            const images = [];
+            let imageCounter = 0;
+            notebook.cells.forEach(cell => {
+                const source = Array.isArray(cell.source) ? cell.source.join('') : cell.source;
+                if (cell.cell_type === 'markdown') { markdownOutput += source + '\n\n';
+                } else if (cell.cell_type === 'code') {
+                    markdownOutput += '```python\n' + source + '\n```\n\n';
+                    if (cell.outputs && cell.outputs.length > 0) {
+                        cell.outputs.forEach(output => {
+                            if (output.output_type === 'stream' && output.text) { const text = Array.isArray(output.text) ? output.text.join('') : output.text; markdownOutput += '<!-- Output -->\n<pre>\n' + text + '</pre>\n\n';
+                            } else if ((output.output_type === 'execute_result' || output.output_type === 'display_data') && output.data) {
+                                let hasImage = false;
+                                if (output.data['image/png'] || output.data['image/jpeg']) {
+                                    hasImage = true;
+                                    const isPng = !!output.data['image/png'];
+                                    const base64Data = isPng ? output.data['image/png'] : output.data['image/jpeg'];
+                                    const mimeType = isPng ? 'image/png' : 'image/jpeg';
+                                    const extension = isPng ? 'png' : 'jpg';
+                                    if (imageOption === 'base64') { markdownOutput += `![Output Image](data:${mimeType};base64,${base64Data})\n\n`;
+                                    } else { imageCounter++; const filename = `image-${imageCounter}.${extension}`; images.push({ filename: filename, data: base64Data }); markdownOutput += `![Output Image](images/${filename})\n\n`; }
+                                }
+                                if (!hasImage && output.data['text/plain']) { const text = Array.isArray(output.data['text/plain']) ? output.data['text/plain'].join('') : output.data['text/plain']; markdownOutput += '<!-- Output -->\n<pre>\n' + text + '</pre>\n\n'; }
+                            }
+                        });
+                    }
+                }
+            });
+            return { markdownContent: markdownOutput, images: images };
+        }
+
+        async function createZipFile(markdownContent, images) {
+            const zip = new JSZip();
+            zip.file("notebook.md", markdownContent);
+            const imgFolder = zip.folder("images");
+            images.forEach(image => { imgFolder.file(image.filename, image.data, { base64: true }); });
+            return await zip.generateAsync({ type: "blob" });
+        }
+
+        function createDownloadLink(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            downloadLink.href = url;
+            downloadLink.download = filename;
+            downloadLink.classList.remove('hidden');
+        }
+
+        // 페이지 로드 시 기본 언어(한국어) 설정
+        document.addEventListener('DOMContentLoaded', () => setLanguage('ko'));
+    </script>
+</body>
+</html>
+
+
